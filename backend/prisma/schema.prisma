@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum LifecycleStatus {
+  planned
+  active
+  phaseOut
+  deprecated
+  archived
+}
+
+enum DeploymentType {
+  SaaS
+  OnPrem
+  CloudHosted
+}
+
+enum BusinessCriticality {
+  missionCritical
+  businessCritical
+  standard
+  low
+}
+
+enum CapabilityLevel {
+  L1
+  L2
+  L3
+}
+
+enum TechnologyType {
+  database
+  middleware
+  runtime
+  network
+  cloudService
+}
+
+enum DataClassification {
+  public
+  internal
+  confidential
+  restricted
+}
+
+enum RegulatoryFlag {
+  GDPR
+  SAMA
+  PDPL
+  FRA
+  other
+}
+
+enum IntegrationPattern {
+  API
+  ETL
+  event
+  file
+}
+
+enum IntegrationProtocol {
+  REST
+  SOAP
+  Kafka
+  SFTP
+  other
+}
+
+enum EntityType {
+  BusinessCapability
+  Application
+  TechnologyComponent
+  DataObject
+  Integration
+}
+
+// ─── Fact Sheet Models ────────────────────────────────────────────────────────
+
+model BusinessCapability {
+  id              String          @id @default(cuid())
+  name            String
+  description     String?
+  level           CapabilityLevel
+  owner           String?
+  entityScope     String[]        @default([])
+  lifecycleStatus LifecycleStatus @default(active)
+  tags            String[]        @default([])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  lastReviewedAt  DateTime?
+
+  // Relationships via join table
+  relationsAsSource Relationship[] @relation("SourceBusinessCapability")
+  relationsAsTarget Relationship[] @relation("TargetBusinessCapability")
+
+  @@map("business_capabilities")
+}
+
+model Application {
+  id                  String              @id @default(cuid())
+  name                String
+  description         String?
+  vendor              String?
+  deploymentType      DeploymentType?
+  businessCriticality BusinessCriticality @default(standard)
+  lifecycleStatus     LifecycleStatus     @default(active)
+  hostingCountry      String?
+  owner               String?
+  contractRenewalDate DateTime?
+  entityScope         String[]            @default([])
+  tags                String[]            @default([])
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  lastReviewedAt      DateTime?
+
+  // Relationships via join table
+  relationsAsSource Relationship[] @relation("SourceApplication")
+  relationsAsTarget Relationship[] @relation("TargetApplication")
+
+  // Integration references
+  integrationsAsSource Integration[] @relation("SourceApp")
+  integrationsAsTarget Integration[] @relation("TargetApp")
+
+  @@map("applications")
+}
+
+model TechnologyComponent {
+  id              String          @id @default(cuid())
+  name            String
+  type            TechnologyType?
+  version         String?
+  vendor          String?
+  endOfLifeDate   DateTime?
+  lifecycleStatus LifecycleStatus @default(active)
+  owner           String?
+  entityScope     String[]        @default([])
+  tags            String[]        @default([])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  lastReviewedAt  DateTime?
+
+  // Relationships via join table
+  relationsAsSource Relationship[] @relation("SourceTechnologyComponent")
+  relationsAsTarget Relationship[] @relation("TargetTechnologyComponent")
+
+  @@map("technology_components")
+}
+
+model DataObject {
+  id                String             @id @default(cuid())
+  name              String
+  description       String?
+  classification    DataClassification @default(internal)
+  owningApplication String?
+  owningCapability  String?
+  residencyCountry  String?
+  regulatoryFlag    RegulatoryFlag?
+  lifecycleStatus   LifecycleStatus    @default(active)
+  owner             String?
+  entityScope       String[]           @default([])
+  tags              String[]           @default([])
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  lastReviewedAt    DateTime?
+
+  // Relationships via join table
+  relationsAsSource Relationship[] @relation("SourceDataObject")
+  relationsAsTarget Relationship[] @relation("TargetDataObject")
+
+  @@map("data_objects")
+}
+
+model Integration {
+  id                 String              @id @default(cuid())
+  name               String
+  sourceApplicationId String?
+  targetApplicationId String?
+  pattern            IntegrationPattern?
+  protocol           IntegrationProtocol?
+  dataClassification DataClassification?
+  owner              String?
+  lifecycleStatus    LifecycleStatus     @default(active)
+  sla                String?
+  entityScope        String[]            @default([])
+  tags               String[]            @default([])
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  lastReviewedAt     DateTime?
+
+  // Direct FK references to source/target applications
+  sourceApplication Application? @relation("SourceApp", fields: [sourceApplicationId], references: [id])
+  targetApplication Application? @relation("TargetApp", fields: [targetApplicationId], references: [id])
+
+  // Relationships via join table
+  relationsAsSource Relationship[] @relation("SourceIntegration")
+  relationsAsTarget Relationship[] @relation("TargetIntegration")
+
+  @@map("integrations")
+}
+
+// ─── Relationship Join Table ──────────────────────────────────────────────────
+
+model Relationship {
+  id                String     @id @default(cuid())
+  sourceType        EntityType
+  targetType        EntityType
+  relationshipLabel String?
+  createdAt         DateTime   @default(now())
+
+  // Polymorphic source references (only one populated per row)
+  sourceBusinessCapabilityId  String?
+  sourceApplicationId         String?
+  sourceTechnologyComponentId String?
+  sourceDataObjectId          String?
+  sourceIntegrationId         String?
+
+  // Polymorphic target references (only one populated per row)
+  targetBusinessCapabilityId  String?
+  targetApplicationId         String?
+  targetTechnologyComponentId String?
+  targetDataObjectId          String?
+  targetIntegrationId         String?
+
+  // Relations
+  sourceBusinessCapability  BusinessCapability?  @relation("SourceBusinessCapability", fields: [sourceBusinessCapabilityId], references: [id])
+  sourceApplication         Application?         @relation("SourceApplication", fields: [sourceApplicationId], references: [id])
+  sourceTechnologyComponent TechnologyComponent? @relation("SourceTechnologyComponent", fields: [sourceTechnologyComponentId], references: [id])
+  sourceDataObject          DataObject?          @relation("SourceDataObject", fields: [sourceDataObjectId], references: [id])
+  sourceIntegration         Integration?         @relation("SourceIntegration", fields: [sourceIntegrationId], references: [id])
+
+  targetBusinessCapability  BusinessCapability?  @relation("TargetBusinessCapability", fields: [targetBusinessCapabilityId], references: [id])
+  targetApplication         Application?         @relation("TargetApplication", fields: [targetApplicationId], references: [id])
+  targetTechnologyComponent TechnologyComponent? @relation("TargetTechnologyComponent", fields: [targetTechnologyComponentId], references: [id])
+  targetDataObject          DataObject?          @relation("TargetDataObject", fields: [targetDataObjectId], references: [id])
+  targetIntegration         Integration?         @relation("TargetIntegration", fields: [targetIntegrationId], references: [id])
+
+  @@index([sourceType, sourceBusinessCapabilityId])
+  @@index([sourceType, sourceApplicationId])
+  @@index([sourceType, sourceTechnologyComponentId])
+  @@index([sourceType, sourceDataObjectId])
+  @@index([sourceType, sourceIntegrationId])
+  @@index([targetType, targetBusinessCapabilityId])
+  @@index([targetType, targetApplicationId])
+  @@index([targetType, targetTechnologyComponentId])
+  @@index([targetType, targetDataObjectId])
+  @@index([targetType, targetIntegrationId])
+
+  @@map("relationships")
+}
